@@ -1,0 +1,34 @@
+name: vigilante_app
+description: "A new Flutter project."
+
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+  path_provider: ^2.1.5
+  device_info_plus: ^10.1.0
+  google_fonts: ^6.2.1
+  font_awesome_flutter: ^10.7.0
+  
+  # Adiós Drift. Hola SQLite crudo y directo.
+  sqflite: ^2.3.0
+  path: ^1.9.1
+  ntp: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.5.4
+  riverpod_generator: ^2.3.5 # Alineado con la annotation
+
+flutter:
+  uses-material-design: true
