@@ -39,7 +39,7 @@ class AppVehicleCard extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isClosed ? theme.colorScheme.surfaceVariant : theme.colorScheme.primaryContainer,
+            color: isClosed ? theme.colorScheme.surfaceContainerHighest : theme.colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../parking/presentation/providers/history_tickets_provider.dart';
 import '../../../../shared/widgets/app_vehicle_card.dart';
 import '../../../../shared/widgets/app_skeleton.dart';
+import '../../../parking/domain/models/ticket.dart'; // 🔄 CAMBIO: Importar Ticket
 
 class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
@@ -18,8 +19,11 @@ class HistoryScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(historyTicketsProvider),
-          )
+            onPressed: () {
+              print('🔄 [History] Recarga manual de historial');
+              ref.invalidate(historyTicketsProvider);
+            },
+          ),
         ],
       ),
       body: historyAsync.when(
@@ -31,18 +35,32 @@ class HistoryScreen extends ConsumerWidget {
             child: AppSkeleton(height: 80),
           ),
         ),
-        error: (error, stack) => Center(
-          child: Text('Error: $error', style: TextStyle(color: theme.colorScheme.error)),
-        ),
+        error: (error, stack) {
+          print('❌ [History] Error en provider: $error');
+          return Center(
+            child: Text(
+              'Error: $error',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          );
+        },
         data: (tickets) {
+          // 🔄 CAMBIO: tickets ahora es List<Ticket>
           if (tickets.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history_toggle_off, size: 64, color: theme.colorScheme.secondary),
+                  Icon(
+                    Icons.history_toggle_off,
+                    size: 64,
+                    color: theme.colorScheme.secondary,
+                  ),
                   const SizedBox(height: 16),
-                  Text('No hay cobros recientes', style: theme.textTheme.titleMedium),
+                  Text(
+                    'No hay cobros recientes',
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ],
               ),
             );
@@ -55,7 +73,9 @@ class HistoryScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Text(
                   'Últimos ${tickets.length} movimientos',
-                  style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
               Expanded(
@@ -63,19 +83,21 @@ class HistoryScreen extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: tickets.length,
                   itemBuilder: (context, index) {
-                    final ticket = tickets[index];
-                    
-                    // Calculamos los minutos totales reales entre entrada y salida
-                    final entrada = DateTime.parse(ticket['entrada']);
-                    final salida = DateTime.parse(ticket['salida']);
-                    final minutos = salida.difference(entrada).inMinutes;
+                    final ticket = tickets[index]; // 🔄 CAMBIO: es Ticket
+
+                    // 🔄 CAMBIO: Usar propiedades del modelo
+                    // En historial, ticket.salida nunca es nulo porque filtramos
+                    final minutos = ticket.salida!
+                        .difference(ticket.entrada)
+                        .inMinutes;
 
                     return AppVehicleCard(
-                      placa: ticket['placa'] as String,
+                      placa: ticket.placa,
                       tiempo: '$minutos min',
-                      monto: '\$${ticket['costo']}', // Inyectamos el costo para que la UI sepa que está cerrado
-                      isSyncPending: ticket['sincronizado'] == 0,
-                      onTap: null, // Solo lectura
+                      // 🔄 CAMBIO: Formatear costo con 2 decimales
+                      monto: '\$${ticket.costo?.toStringAsFixed(2)}',
+                      isSyncPending: ticket.sincronizado == 0,
+                      onTap: null,
                     );
                   },
                 ),

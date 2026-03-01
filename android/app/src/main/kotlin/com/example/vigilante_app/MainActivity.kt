@@ -1,4 +1,4 @@
-package com.davidalessandre.vigilante_app
+package com.example.vigilante_app
 
 import io.flutter.embedding.android.FlutterActivity
 

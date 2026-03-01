@@ -42,7 +42,7 @@ class _AppSkeletonState extends State<AppSkeleton> with SingleTickerProviderStat
         height: widget.height,
         width: widget.width,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant, // Usa el color del tema
+          color: Theme.of(context).colorScheme.surfaceContainerHighest, // Usa el color del tema
           borderRadius: BorderRadius.circular(widget.borderRadius),
         ),
       ),

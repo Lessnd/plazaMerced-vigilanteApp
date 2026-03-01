@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ntp/ntp.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:vigilante_app/core/database/app_database.dart';
 
 class TimeManager extends AsyncNotifier<int> {
@@ -73,7 +72,7 @@ class TimeManager extends AsyncNotifier<int> {
         // Aquí puedes despachar un evento o guardar un log de seguridad
       }
 
-    } catch (e, st) {
+    } catch (e) {
       // Si falla por falta de internet, recaemos en el offset guardado (offline mode)
       final offsetGuardado = await _getSavedOffset();
       state = AsyncValue.data(offsetGuardado);

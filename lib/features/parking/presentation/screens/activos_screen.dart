@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vigilante_app/core/theme/app_theme.dart';
 import '../../../../core/utils/time_manager.dart';
 import '../../../parking/data/repositories/ticket_repository_impl.dart';
 import 'package:vigilante_app/features/parking/presentation/providers/active_ticket_provider.dart';
 import '../../../../shared/widgets/app_skeleton.dart';
 import 'package:vigilante_app/shared/widgets/app_active_vehicle_card.dart';
+import '../../../../shared/widgets/app_toast.dart';
+import '../../../parking/domain/models/ticket.dart'; // 🔄 CAMBIO: Importar el modelo Ticket
 
 class ActivosScreen extends ConsumerWidget {
   const ActivosScreen({super.key});
 
-  // Función para calcular el tiempo visible en la tarjeta de forma rápida
-  String _calcularTiempo(String entradaIso, DateTime horaActual) {
-    final entrada = DateTime.parse(entradaIso);
+  // 🔄 CAMBIO: El método ahora recibe DateTime directamente
+  String _calcularTiempo(DateTime entrada, DateTime horaActual) {
     final diferencia = horaActual.difference(entrada);
     if (diferencia.inHours > 0) {
       return '${diferencia.inHours}h ${diferencia.inMinutes.remainder(60)}m';
@@ -20,22 +20,30 @@ class ActivosScreen extends ConsumerWidget {
     return '${diferencia.inMinutes} minutos';
   }
 
-  // Diálogo de confirmación para cobro manual (Plan B)
-  Future<void> _mostrarConfirmacionCobro(BuildContext context, WidgetRef ref, Map<String, dynamic> ticket) async {
+  // 🔄 CAMBIO: El parámetro ahora es de tipo Ticket
+  Future<void> _mostrarConfirmacionCobro(
+    BuildContext context,
+    WidgetRef ref,
+    Ticket ticket, // <-- Cambio aquí
+  ) async {
     final theme = Theme.of(context);
-    
+
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmar Salida Manual'),
-        content: Text('¿Deseas registrar la salida y cobrar el vehículo con placa ${ticket['placa']}? Utiliza esto si el escaneo OCR falla.'),
+        content: Text(
+          '¿Deseas cobrar el vehículo con placa ${ticket.placa}?', // 🔄 Usamos ticket.placa
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Cobrar Vehículo'),
           ),
@@ -44,50 +52,61 @@ class ActivosScreen extends ConsumerWidget {
     );
 
     if (confirmar == true && context.mounted) {
-      _procesarSalidaManual(context, ref, ticket['id']);
+      print(
+        '💲 [Activos] Usuario confirmó cobro manual para ticket ${ticket.id}', // 🔄 ticket.id
+      );
+      _procesarSalidaManual(
+        context,
+        ref,
+        ticket.id!,
+      ); // ticket.id (puede ser null, usamos ! si seguro)
     }
   }
 
-  Future<void> _procesarSalidaManual(BuildContext context, WidgetRef ref, int ticketId) async {
+  Future<void> _procesarSalidaManual(
+    BuildContext context,
+    WidgetRef ref,
+    int ticketId,
+  ) async {
+    print('💲 [Activos] Iniciando cobro manual para ticket $ticketId');
     try {
       final repo = ref.read(ticketRepositoryProvider);
-      final horaVerdadera = ref.read(timeManagerProvider.notifier).getTrueTime();
+      final horaVerdadera = ref
+          .read(timeManagerProvider.notifier)
+          .getTrueTime();
 
       final resultado = await repo.registrarSalida(
         ticketId: ticketId,
         fechaSalida: horaVerdadera,
-        tarifaActual: 1.0, 
+        tarifaActual: 1.0,
         cortesiaActual: 3,
       );
 
-      // Invalida el provider para que la lista se recargue automáticamente
       ref.invalidate(activeTicketsProvider);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Cobro exitoso: \$${resultado['costo']}'),
-            backgroundColor: Theme.of(context).colorScheme.success, // Usando tu extensión de tema
-          ),
+        AppToastService.show(
+          context,
+          'Cobro exitoso: \$${resultado.costo}',
+          type: AppToastType.success,
         );
+        print('✅ [Activos] Cobro manual exitoso para ticket $ticketId');
       }
-    } catch (e) {
+    } catch (e, s) {
+      print('❌ [Activos] Error en cobro manual: $e');
+      print(s);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        AppToastService.show(context, 'Error: $e', type: AppToastType.error);
       }
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Escuchamos la base de datos
     final activeTicketsAsync = ref.watch(activeTicketsProvider);
-    final horaActualBlindada = ref.watch(timeManagerProvider.notifier).getTrueTime();
+    final horaActualBlindada = ref
+        .watch(timeManagerProvider.notifier)
+        .getTrueTime();
 
     return Scaffold(
       appBar: AppBar(
@@ -95,8 +114,11 @@ class ActivosScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(activeTicketsProvider),
-          )
+            onPressed: () {
+              print('🔄 [Activos] Recarga manual de activos');
+              ref.invalidate(activeTicketsProvider);
+            },
+          ),
         ],
       ),
       body: activeTicketsAsync.when(
@@ -105,21 +127,35 @@ class ActivosScreen extends ConsumerWidget {
           itemCount: 5,
           itemBuilder: (context, index) => const Padding(
             padding: EdgeInsets.only(bottom: 12.0),
-            child: AppSkeleton(height: 80), // Tu skeleton en acción
+            child: AppSkeleton(height: 80),
           ),
         ),
-        error: (error, stack) => Center(
-          child: Text('Error al cargar datos: $error', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        ),
+        error: (error, stack) {
+          print('❌ [Activos] Error en provider: $error');
+          return Center(
+            child: Text(
+              'Error al cargar datos: $error',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          );
+        },
         data: (tickets) {
+          // 🔄 tickets ahora es List<Ticket>
           if (tickets.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 64, color: Theme.of(context).colorScheme.secondary),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
                   const SizedBox(height: 16),
-                  Text('No hay vehículos en el parqueo', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'No hay vehículos en el parqueo',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ],
               ),
             );
@@ -129,14 +165,21 @@ class ActivosScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             itemCount: tickets.length,
             itemBuilder: (context, index) {
-              final ticket = tickets[index];
-              final tiempoTranscurrido = _calcularTiempo(ticket['entrada'] as String, horaActualBlindada);
-              
+              final ticket = tickets[index]; // 🔄 Es Ticket
+              final tiempoTranscurrido = _calcularTiempo(
+                ticket.entrada, // 🔄 Propiedad DateTime
+                horaActualBlindada,
+              );
+
               return AppActiveVehicleCard(
-                placa: ticket['placa'] as String,
+                placa: ticket.placa, // 🔄 Propiedad
                 tiempo: tiempoTranscurrido,
-                isSyncPending: ticket['sincronizado'] == 0,
-                onCobrar: () => _mostrarConfirmacionCobro(context, ref, ticket), // El diálogo intacto
+                isSyncPending: ticket.sincronizado == 0, // 🔄 Propiedad
+                onCobrar: () => _mostrarConfirmacionCobro(
+                  context,
+                  ref,
+                  ticket,
+                ), // 🔄 Pasamos ticket
               );
             },
           );
