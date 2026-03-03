@@ -1,12 +1,12 @@
-// lib/core/sync/sync_service.dart
-
 import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart'; // para kDebugMode
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vigilante_app/core/database/app_database.dart';
-import 'package:vigilante_app/core/sync/connectivity_service.dart';
-import 'package:vigilante_app/features/parking/data/repositories/ticket_repository_impl.dart';
+import 'connectivity_service.dart';
+
+// Repositorios
+import '../../features/parking/data/repositories/ticket_repository_impl.dart';
+import '../../features/banos/data/banos_repository.dart';
 
 class SyncException implements Exception {
   final String message;
@@ -23,11 +23,9 @@ final syncServiceProvider = Provider<SyncService>((ref) {
 class SyncService {
   final Ref ref;
   bool _isSyncing = false;
+  static const int _batchSize = 50; // Tamaño máximo por lote para no ahogar la red
 
-  // URL base del backend (ajústala según tu entorno)
-  static const String baseUrl =
-      'http://192.168.1.100:3000/api'; // Cambia por tu IP real
-
+  static const String baseUrl = 'http://192.168.1.100:3000/api'; 
   late final Dio _dio;
 
   SyncService(this.ref) {
@@ -36,174 +34,117 @@ class SyncService {
         baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
-        sendTimeout: const Duration(seconds: 10),
         headers: {'Content-Type': 'application/json'},
       ),
     );
 
-    // Agregar interceptor de logging solo en modo debug
     if (kDebugMode) {
-      _dio.interceptors.add(
-        LogInterceptor(
-          request: true,
-          requestHeader: true,
-          responseHeader: true,
-          responseBody: true,
-          error: true,
-        ),
-      );
+      _dio.interceptors.add(LogInterceptor(responseBody: true, error: true));
     }
   }
 
   Future<void> syncAll() async {
-    if (_isSyncing) {
-      print('🔄 [Sync] Ya hay una sincronización en curso, ignorando...');
-      return;
-    }
+    if (_isSyncing) return;
     _isSyncing = true;
-    print('🔄 [Sync] Iniciando sincronización completa...');
 
     try {
-      final connectivity = ref.read(connectivityServiceProvider);
-      final hasInternet = await connectivity.isConnected;
-      if (!hasInternet) {
-        throw SyncException(
-          'No hay conexión a internet. Conéctate e inténtalo de nuevo.',
-        );
-      }
+      final hasInternet = await ref.read(connectivityServiceProvider).isConnected;
+      if (!hasInternet) throw SyncException('No hay conexión a internet.');
 
-      await _upload();
-      await _download();
+      await _uploadTickets();
+      await _uploadBanos();
+      await _downloadConfig();
 
-      print('✅ [Sync] Sincronización completada exitosamente.');
-    } catch (e, stack) {
-      print('❌ [Sync] Error durante sincronización: $e');
-      print('📄 [Sync] StackTrace: $stack');
-      if (e is SyncException) rethrow;
-      throw SyncException('Error inesperado: ${e.toString()}');
+      print('✅ [Sync] Ciclo de sincronización completado.');
     } finally {
       _isSyncing = false;
     }
   }
 
-  Future<void> _upload() async {
+  // --- SUBIDA DE TICKETS (POR LOTES) ---
+  Future<void> _uploadTickets() async {
     final repo = ref.read(ticketRepositoryProvider);
     final pending = await repo.obtenerPendientesSync();
-    if (pending.isEmpty) {
-      print('🔼 [Sync] No hay tickets pendientes de subir.');
-      return;
-    }
+    
+    if (pending.isEmpty) return;
+    print('🔼 [Sync] Subiendo ${pending.length} tickets en lotes de $_batchSize...');
 
-    print('🔼 [Sync] Subiendo ${pending.length} tickets pendientes...');
+    for (var i = 0; i < pending.length; i += _batchSize) {
+      final chunk = pending.sublist(i, i + _batchSize > pending.length ? pending.length : i + _batchSize);
+      final ticketsJson = chunk.map((t) => t.toJsonForServer()).toList();
 
-    final ticketsJson = pending.map((t) => t.toJsonForServer()).toList();
-
-    try {
-      final response = await _dio.post(
-        '/parqueo/sync',
-        data: {'tickets': ticketsJson},
-      );
-
-      if (response.statusCode == 200) {
-        final body = response.data;
-        if (body['success'] == true) {
-          for (var ticket in pending) {
+      try {
+        final response = await _dio.post('/parqueo/sync', data: {'tickets': ticketsJson});
+        
+        if (response.statusCode == 200 && response.data['success'] == true) {
+          // Éxito: marcamos solo los de este lote como subidos
+          for (var ticket in chunk) {
             await repo.marcarSincronizado(ticket.serverId, error: false);
           }
-          print(
-            '✅ [Sync] Subida exitosa, ${pending.length} tickets marcados como sincronizados.',
-          );
         } else {
-          throw SyncException(
-            'El servidor respondió con error: ${body['message']}',
-          );
+          throw SyncException('Error del servidor: ${response.data['message']}');
         }
-      } else {
-        throw SyncException(
-          'Error HTTP ${response.statusCode}: ${response.statusMessage}',
-        );
+      } on DioException catch (e) {
+        _handleDioError(e, chunk, (id) => repo.marcarSincronizado(id, error: true), isTicket: true);
       }
-    } on DioException catch (e) {
-      // Marcar como error los tickets pendientes
-      for (var ticket in pending) {
-        await repo.marcarSincronizado(ticket.serverId, error: true);
-      }
-
-      String errorMessage = 'Error en la subida';
-      String technical = e.toString();
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.sendTimeout) {
-        errorMessage = 'Tiempo de espera agotado. Intenta más tarde.';
-      } else if (e.type == DioExceptionType.connectionError) {
-        errorMessage =
-            'No se pudo conectar al servidor. Verifica que la URL sea correcta y que el servidor esté accesible.';
-      } else if (e.type == DioExceptionType.badResponse) {
-        errorMessage =
-            'El servidor respondió con error ${e.response?.statusCode}.';
-        technical = e.response?.data.toString() ?? e.toString();
-      } else if (e.type == DioExceptionType.cancel) {
-        errorMessage = 'La petición fue cancelada.';
-      } else {
-        errorMessage = 'Error de red: ${e.message}';
-      }
-
-      print('❌ [Sync] Error en subida: $e');
-      throw SyncException(errorMessage, technicalDetails: technical);
-    } catch (e) {
-      for (var ticket in pending) {
-        await repo.marcarSincronizado(ticket.serverId, error: true);
-      }
-      print('❌ [Sync] Error inesperado en subida: $e');
-      rethrow;
     }
   }
 
-  Future<void> _download() async {
-    print('🔽 [Sync] Descargando configuración del servidor...');
+  // --- SUBIDA DE BAÑOS (POR LOTES) ---
+  Future<void> _uploadBanos() async {
+    final repo = ref.read(banosRepositoryProvider);
+    final pending = await repo.obtenerPendientesSync();
+    
+    if (pending.isEmpty) return;
+    print('🔼 [Sync] Subiendo ${pending.length} registros de baños...');
+
+    for (var i = 0; i < pending.length; i += _batchSize) {
+      final chunk = pending.sublist(i, i + _batchSize > pending.length ? pending.length : i + _batchSize);
+
+      try {
+        final response = await _dio.post('/banos/sync', data: {'banos': chunk});
+        
+        if (response.statusCode == 200 && response.data['success'] == true) {
+          for (var bano in chunk) {
+            await repo.marcarSincronizado(bano['id'] as int, error: false);
+          }
+        }
+      } on DioException catch (e) {
+        _handleDioError(e, chunk, (id) => repo.marcarSincronizado(id, error: true), isTicket: false);
+      }
+    }
+  }
+
+  // --- DESCARGA DE CONFIGURACIÓN ---
+  Future<void> _downloadConfig() async {
     try {
       final response = await _dio.get('/config');
-
-      if (response.statusCode == 200) {
-        final body = response.data;
-        if (body['success'] == true && body['data'] != null) {
-          final repo = ref.read(ticketRepositoryProvider);
-          await repo.actualizarConfiguracion(body['data']);
-          print('✅ [Sync] Configuración descargada y actualizada.');
-        } else {
-          throw SyncException(
-            'Error al obtener configuración: ${body['message']}',
-          );
-        }
-      } else {
-        throw SyncException(
-          'Error HTTP ${response.statusCode} al descargar configuración.',
-        );
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final repo = ref.read(ticketRepositoryProvider);
+        await repo.actualizarConfiguracion(response.data['data']);
       }
-    } on DioException catch (e) {
-      String errorMessage = 'Error en descarga';
-      String technical = e.toString();
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        errorMessage = 'Tiempo de espera agotado al descargar.';
-      } else if (e.type == DioExceptionType.connectionError) {
-        errorMessage =
-            'No se pudo conectar al servidor para descargar. Verifica la URL o la red.';
-      } else if (e.type == DioExceptionType.badResponse) {
-        errorMessage =
-            'El servidor respondió con error ${e.response?.statusCode}.';
-        technical = e.response?.data.toString() ?? e.toString();
-      } else {
-        errorMessage = 'Error de red: ${e.message}';
-      }
-
-      print('❌ [Sync] Error en descarga: $e');
-      throw SyncException(errorMessage, technicalDetails: technical);
     } catch (e) {
-      print('❌ [Sync] Error inesperado en descarga: $e');
-      rethrow;
+      print('⚠️ [Sync] Fallo descarga de configuración, continuando... $e');
+    }
+  }
+
+  // --- MANEJO INTELIGENTE DE ERRORES ---
+  void _handleDioError(DioException e, List<dynamic> chunk, Future<void> Function(dynamic id) markError, {required bool isTicket}) {
+    // Si es un error 4XX (Bad Request), los datos están corruptos. Lo marcamos como Error (sincronizado = 2)
+    // para que no tranque el bucle infinito. 
+    if (e.response != null && e.response!.statusCode! >= 400 && e.response!.statusCode! < 500) {
+      print('❌ [Sync] Datos rechazados por el servidor. Marcando como error duro.');
+      for (var item in chunk) {
+        final id = isTicket ? item.serverId : item['id'];
+        markError(id);
+      }
+      throw SyncException('Datos inválidos enviados al servidor', technicalDetails: e.toString());
+    } 
+    // Si es un timeout o error 500, es culpa de la red/servidor. NO marcamos error local, 
+    // los dejamos en 0 para que se reintenten en la próxima ejecución.
+    else {
+      print('⏳ [Sync] Error de red o servidor caído. Se retendrán para el próximo lote.');
+      throw SyncException('Fallo de conexión en lote. Se reintentará luego.', technicalDetails: e.toString());
     }
   }
 }

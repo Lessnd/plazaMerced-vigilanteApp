@@ -99,14 +99,16 @@ class _AppToastState extends State<AppToast>
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Material(
-        color: Colors.transparent,
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _offsetAnimation,
-            child: Align(
-              alignment: Alignment.topCenter,
+      // 1. Align se asegura de que el widget solo ocupe el espacio necesario arriba
+      child: Align(
+        alignment: Alignment.topCenter,
+        // 2. Movimos el Material hacia adentro para que no bloquee el resto de la pantalla
+        child: Material(
+          color: Colors.transparent,
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _offsetAnimation,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -115,7 +117,7 @@ class _AppToastState extends State<AppToast>
                 child: GestureDetector(
                   onTap: _dismiss, // Cerrar al tocar
                   child: Container(
-                    constraints: BoxConstraints(
+                    constraints: const BoxConstraints(
                       maxWidth: 400,
                     ), // ancho máximo en tablets
                     padding: const EdgeInsets.symmetric(
@@ -124,7 +126,8 @@ class _AppToastState extends State<AppToast>
                     ),
                     decoration: BoxDecoration(
                       color: _getBackgroundColor(context),
-                      borderRadius: BorderRadius.circular(30),
+                      // ✅ CORRECCIÓN VISUAL: De 30 a 12 para un diseño rectangular estandarizado
+                      borderRadius: BorderRadius.circular(12), 
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.2),

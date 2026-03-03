@@ -31,33 +31,26 @@ class OcrService {
 
   /// Intenta extraer una placa del texto reconocido (formato mexicano común)
   static String? _extractPlate(String text) {
-    // Convertir a mayúsculas y eliminar espacios extras
-    String cleaned = text.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+    // 1. Limpieza Brutal: Todo a mayúsculas y destruimos CUALQUIER carácter 
+    // que no sea una letra de la A-Z o un número del 0-9 (incluyendo espacios, guiones, puntos).
+    String cleaned = text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
 
-    // Patrones comunes de placas mexicanas:
-    // - 3 letras + 3 números (ej. ABC123)
-    // - 3 letras + 4 números (ej. ABC1234)
-    // - 4 letras + 3 números (ej. ABCD123)
-    // - 4 letras + 4 números (ej. ABCD1234)
-    RegExp plateRegex = RegExp(r'[A-Z0-9]{6,8}');
-    Iterable<Match> matches = plateRegex.allMatches(cleaned);
+    if (cleaned.isEmpty) return null;
 
-    for (Match match in matches) {
+    // 2. Patrón Salvadoreño/General: Buscamos un bloque sólido de 5 a 8 caracteres alfanuméricos.
+    // Ej: P123456, C12345, RE1234.
+    RegExp plateRegex = RegExp(r'[A-Z0-9]{5,8}');
+    final match = plateRegex.firstMatch(cleaned);
+
+    if (match != null) {
       String candidate = match.group(0)!;
-      // Validar que tenga al menos 3 letras y 3 números
-      int letters = candidate.replaceAll(RegExp(r'[^A-Z]'), '').length;
-      int digits = candidate.replaceAll(RegExp(r'[^0-9]'), '').length;
-
-      if (letters >= 3 && digits >= 3) {
-        print('✅ [OCR] Placa candidata encontrada: $candidate');
-        return candidate;
-      }
+      print('✅ [OCR] Placa validada localmente: $candidate');
+      return candidate;
     }
 
-    // Si no encuentra un patrón claro, devuelve el texto limpio sin espacios
-    String fallback = cleaned.replaceAll(' ', '');
-    print('⚠️ [OCR] No se encontró patrón de placa, devolviendo: $fallback');
-    return fallback;
+    // Si es muy corta o no encaja, devolvemos lo que se pudo rescatar limpio.
+    print('⚠️ [OCR] Patrón dudoso, devolviendo crudo limpio: $cleaned');
+    return cleaned;
   }
 
   /// Flujo completo: solicita permiso, abre cámara, toma foto y reconoce placa
@@ -267,12 +260,16 @@ class _CameraScreenState extends State<CameraScreen> {
         plate = await OcrService.recognizeTextFromImage(File(image.path));
       }
 
-      // Regresar resultado
+      // Regresar resultado blindado
       if (plate != null && plate.isNotEmpty) {
+        // EL SEGURO DE VIDA: Pase lo que pase (nube o local), 
+        // la placa sale de esta pantalla en mayúsculas y sin basura.
+        String placaFinal = plate.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+        
         if (mounted) {
-          Navigator.pop(context, plate);
+          Navigator.pop(context, placaFinal);
         }
-      } else {
+        } else {
         if (mounted) {
           setState(() => _isProcessing = false);
           AppToastService.show(
