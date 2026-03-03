@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vigilante_app/core/services/printer-service.dart';
 import 'package:vigilante_app/core/theme/app_theme.dart';
 
 // Servicios y Utilidades
@@ -178,6 +179,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         tarifaAplicada: tarifaActual,
       );
 
+      await ref.read(printerServiceProvider).printEntryTicket(ticket);
+
       if (mounted) {
         AppToastService.show(context, 'Entrada exitosa: $placa (Ticket ${ticket.id})', type: AppToastType.success);
         _placaEntradaController.clear();
@@ -232,6 +235,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
 
       final minutosTotales = ticketCerrado.salida!.difference(ticketCerrado.entrada).inMinutes;
+
+      await ref.read(printerServiceProvider).printExitReceipt(ticketCerrado, minutosTotales);
 
       if (mounted) {
         AppToastService.show(context, 'Cobro exitoso: \$${ticketCerrado.costo?.toStringAsFixed(2)} ($minutosTotales min) - Placa: $placaBusqueda', type: AppToastType.success);
