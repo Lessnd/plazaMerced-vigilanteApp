@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../parking/presentation/providers/history_tickets_provider.dart';
 import '../../../../shared/widgets/app_vehicle_card.dart';
 import '../../../../shared/widgets/app_skeleton.dart';
-import '../../../parking/domain/models/ticket.dart'; // 🔄 CAMBIO: Importar Ticket
 
 class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
@@ -84,21 +83,12 @@ class HistoryScreen extends ConsumerWidget {
                   itemCount: tickets.length,
                   itemBuilder: (context, index) {
                     final ticket = tickets[index]; // 🔄 CAMBIO: es Ticket
-
-                    // 🔄 CAMBIO: Usar propiedades del modelo
-                    // En historial, ticket.salida nunca es nulo porque filtramos
-                    final minutos = ticket.salida!
-                        .difference(ticket.entrada)
-                        .inMinutes;
-
-                    return AppVehicleCard(
-                      placa: ticket.placa,
-                      tiempo: '$minutos min',
-                      // 🔄 CAMBIO: Formatear costo con 2 decimales
-                      monto: '\$${ticket.costo?.toStringAsFixed(2)}',
-                      isSyncPending: ticket.sincronizado == 0,
-                      onTap: null,
-                    );
+                    return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: AppVehicleCard(
+                  ticket: ticket, // Pasas el objeto completo y la tarjeta hace el resto
+                ),
+              );
                   },
                 ),
               ),

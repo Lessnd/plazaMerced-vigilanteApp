@@ -1,73 +1,163 @@
 import 'package:flutter/material.dart';
-import 'app_skeleton.dart';
+import '../../features/parking/domain/models/ticket.dart';
 
 class AppVehicleCard extends StatelessWidget {
-  final String placa;
-  final String tiempo;
-  final String? monto; // Null si sigue activo
-  final bool isSyncPending;
+  final Ticket ticket;
   final VoidCallback? onTap;
-  final bool isLoading; // Para cuando se esté cargando la lista
 
   const AppVehicleCard({
     super.key,
-    required this.placa,
-    required this.tiempo,
-    this.monto,
-    this.isSyncPending = false,
+    required this.ticket,
     this.onTap,
-    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 12.0),
-        child: AppSkeleton(height: 80),
-      );
-    }
-
     final theme = Theme.of(context);
-    final isClosed = monto != null;
+    final colorScheme = theme.colorScheme;
+
+    // 1. Cálculos estáticos (La transacción ya ocurrió)
+    final duracion = ticket.salida != null ? ticket.salida!.difference(ticket.entrada) : Duration.zero;
+    final horas = duracion.inHours;
+    final minutosRestantes = duracion.inMinutes % 60;
+    final costo = ticket.costo ?? 0.0;
+
+    // 2. Formateo de fechas para auditoría rápida
+    final entradaStr = "${ticket.entrada.day.toString().padLeft(2, '0')}/${ticket.entrada.month.toString().padLeft(2, '0')} ${ticket.entrada.hour.toString().padLeft(2, '0')}:${ticket.entrada.minute.toString().padLeft(2, '0')}";
+    final salidaStr = ticket.salida != null 
+        ? "${ticket.salida!.day.toString().padLeft(2, '0')}/${ticket.salida!.month.toString().padLeft(2, '0')} ${ticket.salida!.hour.toString().padLeft(2, '0')}:${ticket.salida!.minute.toString().padLeft(2, '0')}"
+        : "N/A";
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isClosed ? theme.colorScheme.surfaceContainerHighest : theme.colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.directions_car,
-            color: isClosed ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.onPrimaryContainer,
-          ),
-        ),
-        title: Text(
-          placa,
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text('Tiempo: $tiempo'),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (monto != null)
-              Text(
-                monto!,
-                style: TextStyle(
-                  color: theme.colorScheme.error, // Usamos tu color para cobros
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // --- FILA SUPERIOR: Identificación ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200, // Neutro, ya no está ocupando espacio
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.check_circle, color: Colors.grey.shade600),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        ticket.placa,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2.0,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Badge de Estado (Confirmación Fiscal)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B).withOpacity(0.1), // Slate tenue
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'COBRADO',
+                      style: TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            if (isSyncPending)
-              const Icon(Icons.cloud_off, size: 16, color: Colors.orange),
-          ],
+              
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Divider(height: 1),
+              ),
+              
+              // --- FILA MEDIA: Sellos de Tiempo ---
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Entrada: $entradaStr', style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
+                  Text('Salida: $salidaStr', style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // --- FILA INFERIOR: Analítica Financiera ---
+              Row(
+                children: [
+                  // Bloque Tiempo Total
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'TIEMPO TOTAL',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade500,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${horas}h ${minutosRestantes}m',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface.withOpacity(0.85),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Bloque Dinero Ingresado
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'TOTAL COBRADO',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade500,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '\$${costo.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF2E7D32), // Verde dinero (Éxito contable)
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,30 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vigilante_app/core/services/printer-service.dart';
+
 import '../../../../core/utils/time_manager.dart';
 import '../../../parking/data/repositories/ticket_repository_impl.dart';
-import 'package:vigilante_app/features/parking/presentation/providers/active_ticket_provider.dart';
+import '../../../parking/domain/models/ticket.dart';
+import '../../../config/presentation/providers/config_provider.dart';
+import '../providers/active_ticket_provider.dart';
+import '../providers/history_tickets_provider.dart';
+
 import '../../../../shared/widgets/app_skeleton.dart';
-import 'package:vigilante_app/shared/widgets/app_active_vehicle_card.dart';
+import '../../../../shared/widgets/app_active_vehicle_card.dart';
 import '../../../../shared/widgets/app_toast.dart';
-import '../../../parking/domain/models/ticket.dart'; // 🔄 CAMBIO: Importar el modelo Ticket
 
 class ActivosScreen extends ConsumerWidget {
   const ActivosScreen({super.key});
 
-  // 🔄 CAMBIO: El método ahora recibe DateTime directamente
-  String _calcularTiempo(DateTime entrada, DateTime horaActual) {
-    final diferencia = horaActual.difference(entrada);
-    if (diferencia.inHours > 0) {
-      return '${diferencia.inHours}h ${diferencia.inMinutes.remainder(60)}m';
-    }
-    return '${diferencia.inMinutes} minutos';
-  }
-
-  // 🔄 CAMBIO: El parámetro ahora es de tipo Ticket
   Future<void> _mostrarConfirmacionCobro(
     BuildContext context,
     WidgetRef ref,
-    Ticket ticket, // <-- Cambio aquí
+    Ticket ticket,
   ) async {
     final theme = Theme.of(context);
 
@@ -33,7 +28,7 @@ class ActivosScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmar Salida Manual'),
         content: Text(
-          '¿Deseas cobrar el vehículo con placa ${ticket.placa}?', // 🔄 Usamos ticket.placa
+          '¿Deseas registrar la salida y cobrar el vehículo con placa ${ticket.placa}?',
         ),
         actions: [
           TextButton(
@@ -52,49 +47,48 @@ class ActivosScreen extends ConsumerWidget {
     );
 
     if (confirmar == true && context.mounted) {
-      print(
-        '💲 [Activos] Usuario confirmó cobro manual para ticket ${ticket.id}', // 🔄 ticket.id
-      );
-      _procesarSalidaManual(
-        context,
-        ref,
-        ticket.id!,
-      ); // ticket.id (puede ser null, usamos ! si seguro)
+      _procesarSalidaManual(context, ref, ticket);
     }
   }
 
   Future<void> _procesarSalidaManual(
     BuildContext context,
     WidgetRef ref,
-    int ticketId,
+    Ticket ticket,
   ) async {
-    print('💲 [Activos] Iniciando cobro manual para ticket $ticketId');
     try {
       final repo = ref.read(ticketRepositoryProvider);
-      final horaVerdadera = ref
-          .read(timeManagerProvider.notifier)
-          .getTrueTime();
+      final horaVerdadera = ref.read(timeManagerProvider.notifier).getTrueTime();
 
-      final resultado = await repo.registrarSalida(
-        ticketId: ticketId,
+      // Lectura REAL de la base de datos para la tarifa
+      final config = await ref.read(currentConfigProvider.future);
+      final double tarifaActual = (config['tarifaParqueoHora'] as num?)?.toDouble() ?? 1.0;
+      final int cortesiaActual = (config['minutos_cortesia'] as num?)?.toInt() ?? 3;
+
+      final ticketCerrado = await repo.registrarSalida(
+        ticketId: ticket.id!,
         fechaSalida: horaVerdadera,
-        tarifaActual: 1.0,
-        cortesiaActual: 3,
+        tarifaActual: tarifaActual,
+        cortesiaActual: cortesiaActual,
       );
 
+      final minutosTotales = ticketCerrado.salida!.difference(ticketCerrado.entrada).inMinutes;
+
+      // Inyección del Hardware (Simulado)
+      await ref.read(printerServiceProvider).printExitReceipt(ticketCerrado, minutosTotales);
+
+      // Reactividad global
       ref.invalidate(activeTicketsProvider);
+      ref.invalidate(historyTicketsProvider);
 
       if (context.mounted) {
         AppToastService.show(
           context,
-          'Cobro exitoso: \$${resultado.costo}',
+          'Cobro exitoso: \$${ticketCerrado.costo?.toStringAsFixed(2)}',
           type: AppToastType.success,
         );
-        print('✅ [Activos] Cobro manual exitoso para ticket $ticketId');
       }
-    } catch (e, s) {
-      print('❌ [Activos] Error en cobro manual: $e');
-      print(s);
+    } catch (e) {
       if (context.mounted) {
         AppToastService.show(context, 'Error: $e', type: AppToastType.error);
       }
@@ -104,9 +98,6 @@ class ActivosScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeTicketsAsync = ref.watch(activeTicketsProvider);
-    final horaActualBlindada = ref
-        .watch(timeManagerProvider.notifier)
-        .getTrueTime();
 
     return Scaffold(
       appBar: AppBar(
@@ -114,10 +105,7 @@ class ActivosScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              print('🔄 [Activos] Recarga manual de activos');
-              ref.invalidate(activeTicketsProvider);
-            },
+            onPressed: () => ref.invalidate(activeTicketsProvider),
           ),
         ],
       ),
@@ -127,11 +115,10 @@ class ActivosScreen extends ConsumerWidget {
           itemCount: 5,
           itemBuilder: (context, index) => const Padding(
             padding: EdgeInsets.only(bottom: 12.0),
-            child: AppSkeleton(height: 80),
+            child: AppSkeleton(height: 120), // Ajustado a la altura de la nueva tarjeta
           ),
         ),
         error: (error, stack) {
-          print('❌ [Activos] Error en provider: $error');
           return Center(
             child: Text(
               'Error al cargar datos: $error',
@@ -140,7 +127,6 @@ class ActivosScreen extends ConsumerWidget {
           );
         },
         data: (tickets) {
-          // 🔄 tickets ahora es List<Ticket>
           if (tickets.isEmpty) {
             return Center(
               child: Column(
@@ -165,21 +151,15 @@ class ActivosScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             itemCount: tickets.length,
             itemBuilder: (context, index) {
-              final ticket = tickets[index]; // 🔄 Es Ticket
-              final tiempoTranscurrido = _calcularTiempo(
-                ticket.entrada, // 🔄 Propiedad DateTime
-                horaActualBlindada,
-              );
+              final ticket = tickets[index];
 
-              return AppActiveVehicleCard(
-                placa: ticket.placa, // 🔄 Propiedad
-                tiempo: tiempoTranscurrido,
-                isSyncPending: ticket.sincronizado == 0, // 🔄 Propiedad
-                onCobrar: () => _mostrarConfirmacionCobro(
-                  context,
-                  ref,
-                  ticket,
-                ), // 🔄 Pasamos ticket
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: AppActiveVehicleCard(
+                  ticket: ticket,
+                  // El tap ahora dispara el flujo de cobro directamente
+                  onTap: () => _mostrarConfirmacionCobro(context, ref, ticket),
+                ),
               );
             },
           );

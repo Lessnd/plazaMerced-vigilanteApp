@@ -1,138 +1,86 @@
 import 'package:flutter/material.dart';
 
+extension CustomColorScheme on ColorScheme {
+  Color get success => const Color(0xFF2E7D32); 
+  Color get onSuccess => Colors.white;
+  Color get warning => const Color(0xFFED6C02); 
+  Color get onWarning => Colors.white;
+}
+
 class AppTheme {
-  AppTheme._();
-
   static ThemeData get lightTheme {
-    const colorScheme = ColorScheme(
-      brightness: Brightness.light,
-
-      // 🔷 Primary
-      primary: Color(0xFF1E3A8A),
-      onPrimary: Color(0xFFFFFFFF),
-      primaryContainer: Color(0xFFE0E7FF),
-      onPrimaryContainer: Color(0xFF1E3A8A),
-
-      // ⚙️ Secondary
-      secondary: Color(0xFF475569),
-      onSecondary: Color(0xFFFFFFFF),
-      secondaryContainer: Color(0xFFF1F5F9),
-      onSecondaryContainer: Color(0xFF334155),
-
-      // 🔴 Error
-      error: Color(0xFFDC2626),
-      onError: Color(0xFFFFFFFF),
-      errorContainer: Color(0xFFFEE2E2),
-      onErrorContainer: Color(0xFFDC2626),
-
-      // 🧱 Surface (Estándar moderno de Material 3)
-      surface: Color(0xFFF8FAFC), 
-      onSurface: Color(0xFF1E293B), 
-      
-      surfaceContainerHighest: Color(0xFFF1F5F9), 
-      onSurfaceVariant: Color(0xFF334155),
-
-      outline: Color(0xFFCBD5E1),
-
-      // Required but not customized (keep consistent)
-      tertiary: Color(0xFF1E3A8A),
-      onTertiary: Color(0xFFFFFFFF),
-      tertiaryContainer: Color(0xFFE0E7FF),
-      onTertiaryContainer: Color(0xFF1E3A8A),
-
-      inverseSurface: Color(0xFF1E293B),
-      onInverseSurface: Color(0xFFF8FAFC),
-      inversePrimary: Color(0xFFE0E7FF),
-
-      shadow: Colors.black,
-      scrim: Colors.black,
-      surfaceTint: Color(0xFF1E3A8A),
-    );
+    // Colores para el SoftUI Táctico
+    const Color primaryColor = Color(0xFF4A90E2); // Un azul más suave y moderno
+    const Color scaffoldBackground = Color(0xFFEEF2F6); // Gris azulado, la base del SoftUI
+    const Color surfaceColor = Colors.white; 
 
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
-      colorScheme: colorScheme,
-
-      // ✅ CORRECCIÓN 1: Ahora usa 'surface'
-      scaffoldBackgroundColor: colorScheme.surface,
-
-      appBarTheme: AppBarTheme(
-        elevation: 0,
-        centerTitle: true,
-        backgroundColor: colorScheme.surface,
-        foregroundColor: colorScheme.onSurface,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primaryColor,
+        background: scaffoldBackground,
+        surface: surfaceColor,
+      ),
+      scaffoldBackgroundColor: scaffoldBackground, 
+      
+      appBarTheme: const AppBarTheme(
+        backgroundColor: scaffoldBackground, // Appbar se funde con el fondo (Look SoftUI)
+        foregroundColor: Color(0xFF2C3E50), // Texto oscuro para contraste
+        elevation: 0, // Sin sombra dura en el header
+        centerTitle: false,
       ),
 
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          minimumSize: const Size(double.infinity, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(double.infinity, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(double.infinity, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
+      // ✅ Tarjetas con estética SoftUI (Acolchadas y flotantes)
       cardTheme: CardThemeData(
-        elevation: 1,
-        color: colorScheme.surface,
+        color: surfaceColor,
+        elevation: 8, // Elevación alta pero con sombra muy suave
+        shadowColor: const Color(0xFF9EABBA).withOpacity(0.3), // Sombra gris azulada difusa
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(24), // Bordes muy redondeados (Soft)
+          side: BorderSide.none, // Quitamos las líneas duras
         ),
+        margin: EdgeInsets.zero, 
       ),
 
+      // ✅ Campos de texto acolchados
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        // ✅ CORRECCIÓN 2: Ahora usa 'surfaceContainerHighest'
-        fillColor: colorScheme.surfaceContainerHighest,
+        fillColor: surfaceColor, 
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none, // Sin bordes duros
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.transparent),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primaryColor, width: 2),
         ),
+        labelStyle: const TextStyle(color: Color(0xFF7F8C8D), fontWeight: FontWeight.w500),
+        hintStyle: const TextStyle(color: Color(0xFFBDC3C7)),
       ),
 
-      snackBarTheme: SnackBarThemeData(
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+      // ✅ Botones redondeados y amigables
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          elevation: 4,
+          shadowColor: primaryColor.withOpacity(0.4),
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+      ),
+      
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          elevation: 4,
+          shadowColor: primaryColor.withOpacity(0.4),
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
     );
   }
-}
-
-extension CustomColors on ColorScheme {
-  Color get success => const Color(0xFF16A34A);
-  Color get successContainer => const Color(0xFFDCFCE7);
-  Color get onSuccess => const Color(0xFFFFFFFF);
-
-  Color get warning => const Color(0xFFD97706);
-  Color get warningContainer => const Color(0xFFFEF3C7);
-  Color get onWarning => const Color(0xFFFFFFFF);
 }
